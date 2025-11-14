@@ -14,6 +14,7 @@ from sklearn.metrics import roc_auc_score, average_precision_score, f1_score
 from model.efficientnet_lstm import efficientnet_lstm
 from model.x3d_model import x3d_model
 from model.mvit_v2 import MViT_v2_S
+from model.efficientnet_transformer import efficientnet_transformer
 from preprocessing.dataset import FaceForensicsDataset
 from utils.logger import setup_logger
 from utils.checkpoints import save_checkpoint, load_checkpoint
@@ -37,6 +38,8 @@ def build_model(cfg):
         return x3d_model()
     elif "mvit_v2_s" in name:
         return MViT_v2_S()
+    elif "efficientnet_transformer" in name:
+        return efficientnet_transformer()
     else:
         raise ValueError(f"[WARN] Unknown model name: {name}")
 
