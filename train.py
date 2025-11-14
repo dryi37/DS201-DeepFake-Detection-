@@ -33,13 +33,13 @@ def set_seed(seed=42):
 def build_model(cfg):
     name = cfg["model"]["name"].lower()
     if "efficientnet_lstm" in name:
-        return efficientnet_lstm(cfg["model"]["pretrained"])
+        return efficientnet_lstm(pretrained=cfg["model"]["pretrained"])
     elif "x3d" in name:
         return x3d_model()
     elif "mvit_v2_s" in name:
         return MViT_v2_S()
     elif "efficientnet_transformer" in name:
-        return efficientnet_transformer(cfg["model"]["pretrained"])
+        return efficientnet_transformer(pretrained=cfg["model"]["pretrained"])
     else:
         raise ValueError(f"[WARN] Unknown model name: {name}")
 
