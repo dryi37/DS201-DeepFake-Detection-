@@ -1,0 +1,18 @@
+model:
+  name: mvit_v2_s    
+  num_classes: 2
+  pretrained: true
+
+train:
+  epochs: 30
+  warmup_epochs: 5
+  batch_size: 2
+  optimizer: adamw      
+  lr: !!float "1e-4"
+  min_lr: !!float "1e-6"
+  pos_weight: 0.5
+  weight_decay: !!float "1e-4"
+
+data:
+  root_dir: data       
+  num_workers: 4
