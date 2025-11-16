@@ -1,5 +1,5 @@
 model:
-  name: efficientnet_lstm_v2     
+  name: efficientnet_v2
   num_classes: 2
   pretrained: true
 
@@ -12,7 +12,7 @@ train:
   min_lr: !!float "1e-6"
   pos_weight: 0.5
   weight_decay: !!float "1e-4"
-  ckpt: None
+  ckpt: D:\DS\projects\deepfake_detection_0_0_2\epoch_11.pth
 
 data:
   root_dir: data       

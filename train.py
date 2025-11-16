@@ -41,7 +41,7 @@ def build_model(cfg):
         return MViT_v2_S()
     elif "efficientnet_transformer" in name:
         return efficientnet_transformer(pretrained=cfg["model"]["pretrained"])
-    elif "efficientnet_lstm_v2" in name:
+    elif "efficientnet_v2" in name:
         base_model = efficientnet_lstm(pretrained=False)
         base_model, _, _ = load_checkpoint(cfg["train"]["ckpt"], base_model, None, device=torch.device("cuda"), load_opt=False)
         return efficientnet_lstm_finetune(base_model)
