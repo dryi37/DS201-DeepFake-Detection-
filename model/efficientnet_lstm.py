@@ -21,7 +21,7 @@ class efficientnet_lstm(nn.Module):
             dropout=dropout if num_layers > 1 else 0.0
         )
 
-        self.attn = nn.Linear(hidden_size * 2, 1)
+        # self.attn = nn.Linear(hidden_size * 2, 1)
 
         direction = 2
         self.fc = nn.Sequential(
@@ -45,8 +45,8 @@ class efficientnet_lstm(nn.Module):
             elif "bias" in name:
                 nn.init.constant_(param, 0)
 
-        nn.init.xavier_uniform_(self.attn.weight)
-        nn.init.constant_(self.attn.bias, 0)
+        # nn.init.xavier_uniform_(self.attn.weight)
+        # nn.init.constant_(self.attn.bias, 0)
 
         for m in self.fc.modules():
             if isinstance(m, nn.Linear):
@@ -79,8 +79,12 @@ class efficientnet_lstm(nn.Module):
 
         lstm_out, _ = self.lstm(feat)  # (B, T, hidden_size*direction)
         
+        # Mean pooling
+        out = torch.mean(lstm_out, dim=1)  # (B, hidden_size*direction)
+        out = self.fc(out)  # (B, num_classes)
+        
         # Attention pooling
-        weights = torch.softmax(self.attn(lstm_out), dim=1)
-        pooled = (weights * lstm_out).sum(dim=1)
-        out = self.fc(pooled)
+        # weights = torch.softmax(self.attn(lstm_out), dim=1)
+        # pooled = (weights * lstm_out).sum(dim=1)
+        # out = self.fc(pooled)
         return out

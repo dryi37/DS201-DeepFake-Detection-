@@ -6,7 +6,9 @@ checkpoints/
 
 # temp
 test.ipynb
+analysis.ipynb
 
 preprocessing/__pycache__/
 model/__pycache__/
 utils/__pycache__/
+inference/__pycache__/

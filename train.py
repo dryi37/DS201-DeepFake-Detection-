@@ -9,9 +9,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from sklearn.metrics import roc_auc_score, average_precision_score, f1_score
+from sklearn.metrics import roc_auc_score, f1_score
 
 from model.efficientnet_lstm import efficientnet_lstm
+from model.efficientnet_lstm_v2 import efficientnet_lstm_finetune
 from model.x3d_model import x3d_model
 from model.mvit_v2 import MViT_v2_S
 from model.efficientnet_transformer import efficientnet_transformer
@@ -40,6 +41,10 @@ def build_model(cfg):
         return MViT_v2_S()
     elif "efficientnet_transformer" in name:
         return efficientnet_transformer(pretrained=cfg["model"]["pretrained"])
+    elif "efficientnet_lstm_v2" in name:
+        base_model = efficientnet_lstm(pretrained=False)
+        base_model, _, _ = load_checkpoint(cfg["train"]["ckpt"], base_model, None, device=torch.device("cuda"), load_opt=False)
+        return efficientnet_lstm_finetune(base_model)
     else:
         raise ValueError(f"[WARN] Unknown model name: {name}")
 
@@ -123,7 +128,7 @@ def train():
             labels = batch["label"].long().to(device)
 
             optimizer.zero_grad()
-            outputs = model(videos)
+            outputs, _ = model(videos)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -141,11 +146,10 @@ def train():
         avg_train_loss = np.mean(train_losses)
         try:
             preds = (np.array(all_y_prob) > 0.5).astype(int)
-            train_f1 = f1_score(all_y_true, preds)
+            train_f1 = f1_score(all_y_true, preds, average="macro")
             train_roc = roc_auc_score(all_y_true, all_y_prob)
-            train_pr = average_precision_score(all_y_true, all_y_prob)
         except ValueError:
-            train_f1 = train_roc = train_pr = 0.0
+            train_f1 = train_roc = 0.0
 
         # Validation 
         model.eval()
@@ -156,7 +160,7 @@ def train():
             for batch in tqdm(val_loader, desc="Validating", ncols=100):
                 videos = batch["clip"].to(device)
                 labels = batch["label"].long().to(device)
-                outputs = model(videos)
+                outputs, _ = model(videos)
                 loss = criterion(outputs, labels)
 
                 probs = torch.softmax(outputs, dim=1)[:, 1].detach().cpu().numpy()
@@ -167,26 +171,25 @@ def train():
         avg_val_loss = np.mean(val_losses)
         try:
             val_preds = (np.array(val_prob) > 0.5).astype(int)
-            val_f1 = f1_score(val_true, val_preds)
+            val_f1 = f1_score(val_true, val_preds, average="macro")
             val_roc = roc_auc_score(val_true, val_prob)
-            val_pr = average_precision_score(val_true, val_prob)
         except ValueError:
-            val_f1 = val_roc = val_pr = 0.0
+            val_f1 = val_roc = 0.0
 
         # Logging & Save
         logger.info(
             f"Epoch {epoch+1}/{num_epochs} | "
             f"train_loss={avg_train_loss:.4f} | train_f1={train_f1:.4f} | "
-            f"train_auc={train_roc:.4f} | train_pr_auc={train_pr:.4f} | "
+            f"train_auc={train_roc:.4f} | "
             f"val_loss={avg_val_loss:.4f} | val_f1={val_f1:.4f} | "
-            f"val_auc={val_roc:.4f} | val_pr_auc={val_pr:.4f}"
+            f"val_auc={val_roc:.4f}"
         )
 
         print(
             f"## Epoch [{epoch+1}] | "
             f"train_loss={avg_train_loss:.4f} | train_f1={train_f1:.4f} | "
             f"val_loss={avg_val_loss:.4f} | val_f1={val_f1:.4f} | "
-            f"val_auc={val_roc:.4f} | val_pr_auc={val_pr:.4f}"
+            f"val_auc={val_roc:.4f}"
         )
 
         # Save checkpoint
