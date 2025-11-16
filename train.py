@@ -128,7 +128,7 @@ def train():
             labels = batch["label"].long().to(device)
 
             optimizer.zero_grad()
-            outputs, _ = model(videos)
+            (outputs, _ ) = model(videos)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -160,7 +160,7 @@ def train():
             for batch in tqdm(val_loader, desc="Validating", ncols=100):
                 videos = batch["clip"].to(device)
                 labels = batch["label"].long().to(device)
-                outputs, _ = model(videos)
+                (outputs, _ ) = model(videos)
                 loss = criterion(outputs, labels)
 
                 probs = torch.softmax(outputs, dim=1)[:, 1].detach().cpu().numpy()
