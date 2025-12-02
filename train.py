@@ -16,6 +16,7 @@ from model.efficientnet_lstm_v2 import efficientnet_lstm_finetune
 from model.x3d_model import x3d_model
 from model.mvit_v2 import MViT_v2_S
 from model.efficientnet_transformer import efficientnet_transformer
+from model.custom_model import CAAFNet
 from preprocessing.dataset import FaceForensicsDataset
 from utils.logger import setup_logger
 from utils.checkpoints import save_checkpoint, load_checkpoint
@@ -45,6 +46,8 @@ def build_model(cfg):
         base_model = efficientnet_lstm(pretrained=False)
         base_model, _, _ = load_checkpoint(cfg["train"]["ckpt"], base_model, None, device=torch.device("cuda"), load_opt=False)
         return efficientnet_lstm_finetune(base_model)
+    elif "custom_model" in name:
+        return CAAFNet()
     else:
         raise ValueError(f"[WARN] Unknown model name: {name}")
 
@@ -128,7 +131,7 @@ def train():
             labels = batch["label"].long().to(device)
 
             optimizer.zero_grad()
-            (outputs, _ ) = model(videos)
+            outputs = model(videos)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -160,7 +163,7 @@ def train():
             for batch in tqdm(val_loader, desc="Validating", ncols=100):
                 videos = batch["clip"].to(device)
                 labels = batch["label"].long().to(device)
-                (outputs, _ ) = model(videos)
+                outputs = model(videos)
                 loss = criterion(outputs, labels)
 
                 probs = torch.softmax(outputs, dim=1)[:, 1].detach().cpu().numpy()
