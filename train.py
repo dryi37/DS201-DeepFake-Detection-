@@ -17,6 +17,7 @@ from model.x3d_model import x3d_model
 from model.mvit_v2 import MViT_v2_S
 from model.efficientnet_transformer import efficientnet_transformer
 from model.custom_model import CAAFNet
+from model.custom_model_v1 import DeepFake_Final
 from preprocessing.dataset import FaceForensicsDataset
 from utils.logger import setup_logger
 from utils.checkpoints import save_checkpoint, load_checkpoint
@@ -34,7 +35,9 @@ def set_seed(seed=42):
 
 def build_model(cfg):
     name = cfg["model"]["name"].lower()
-    if "efficientnet_lstm" in name:
+    if "custom_model_v1" in name:
+        return DeepFake_Final()
+    elif "efficientnet_lstm" in name:
         return efficientnet_lstm(pretrained=cfg["model"]["pretrained"])
     elif "x3d" in name:
         return x3d_model()
@@ -46,8 +49,8 @@ def build_model(cfg):
         base_model = efficientnet_lstm(pretrained=False)
         base_model, _, _ = load_checkpoint(cfg["train"]["ckpt"], base_model, None, device=torch.device("cuda"), load_opt=False)
         return efficientnet_lstm_finetune(base_model)
-    elif "custom_model" in name:
-        return CAAFNet()
+    # elif "custom_model" in name:
+    #     return CAAFNet()
     else:
         raise ValueError(f"[WARN] Unknown model name: {name}")
 
