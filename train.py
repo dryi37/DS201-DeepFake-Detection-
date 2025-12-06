@@ -11,12 +11,12 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from sklearn.metrics import roc_auc_score, f1_score
 
-from model.efficientnet_lstm import efficientnet_lstm
-from model.efficientnet_lstm_v2 import efficientnet_lstm_finetune
-from model.x3d_model import x3d_model
-from model.mvit_v2 import MViT_v2_S
-from model.efficientnet_transformer import efficientnet_transformer
-from model.custom_model import CAAFNet
+# from model.efficientnet_lstm import efficientnet_lstm
+# from model.efficientnet_lstm_v2 import efficientnet_lstm_finetune
+# from model.x3d_model import x3d_model
+# from model.mvit_v2 import MViT_v2_S
+# from model.efficientnet_transformer import efficientnet_transformer
+# from model.custom_model import CAAFNet
 from model.custom_model_v1 import DeepFake_Final
 from preprocessing.dataset import FaceForensicsDataset
 from utils.logger import setup_logger

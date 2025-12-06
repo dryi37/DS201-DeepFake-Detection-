@@ -266,11 +266,8 @@ class FusionHead(nn.Module):
             for _ in range(co_layers)
         ])
 
-        self.fusion = nn.Sequential(
-            nn.Linear(d_model*2, d_model),
-            nn.GELU(),
-            nn.Dropout(drop),
-        )
+        self.ln_rgb = nn.LayerNorm(d_model)
+        self.ln_hf  = nn.LayerNorm(d_model)
 
         # Transformer Fusion layer
         encoder = nn.TransformerEncoderLayer(
@@ -308,8 +305,9 @@ class FusionHead(nn.Module):
         for blk in self.co_blocks:
             rgb, hf = blk(rgb,hf)
 
-        x = torch.cat([rgb, hf], dim=-1)    # (B,T,2D)
-        x = self.fusion(x)  
+        rgb = self.ln_rgb(rgb)
+        hf  = self.ln_hf(hf)
+        x = rgb + hf
 
         cls = self.cls_token.expand(B, 1, -1)  # (B,1,D)
         x = torch.cat([cls, x], dim=1) 
