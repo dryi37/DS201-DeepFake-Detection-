@@ -266,6 +266,12 @@ class FusionHead(nn.Module):
             for _ in range(co_layers)
         ])
 
+        self.fusion = nn.Sequential(
+            nn.Linear(d_model*2, d_model),
+            nn.GELU(),
+            nn.Dropout(drop),
+        )
+
         # Transformer Fusion layer
         encoder = nn.TransformerEncoderLayer(
             d_model=d_model, nhead=nhead,
@@ -276,6 +282,9 @@ class FusionHead(nn.Module):
         self.transformer = nn.TransformerEncoder(
             encoder, num_layers=trans_layers
         )
+
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
 
         self.norm = nn.LayerNorm(d_model)
         self.cls = nn.Sequential(
@@ -299,12 +308,17 @@ class FusionHead(nn.Module):
         for blk in self.co_blocks:
             rgb, hf = blk(rgb,hf)
 
-        x = rgb + hf      # fusion 
+        x = torch.cat([rgb, hf], dim=-1)    # (B,T,2D)
+        x = self.fusion(x)  
+
+        cls = self.cls_token.expand(B, 1, -1)  # (B,1,D)
+        x = torch.cat([cls, x], dim=1) 
 
         # Transformer fusion
-        x = self.transformer(x)  # (B,T,D)
-        x = self.norm(x).mean(dim=1)
+        x = self.transformer(x)  # (B,1+T,D)
+        x = self.norm(x[:,0])               # take CLS token only
 
+        # 7) Classification
         return self.cls(x)
     
 class DeepFake_Final(nn.Module):

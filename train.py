@@ -37,18 +37,18 @@ def build_model(cfg):
     name = cfg["model"]["name"].lower()
     if "custom_model_v1" in name:
         return DeepFake_Final()
-    elif "efficientnet_lstm" in name:
-        return efficientnet_lstm(pretrained=cfg["model"]["pretrained"])
-    elif "x3d" in name:
-        return x3d_model()
-    elif "mvit_v2_s" in name:
-        return MViT_v2_S()
-    elif "efficientnet_transformer" in name:
-        return efficientnet_transformer(pretrained=cfg["model"]["pretrained"])
-    elif "efficientnet_v2" in name:
-        base_model = efficientnet_lstm(pretrained=False)
-        base_model, _, _ = load_checkpoint(cfg["train"]["ckpt"], base_model, None, device=torch.device("cuda"), load_opt=False)
-        return efficientnet_lstm_finetune(base_model)
+    # elif "efficientnet_lstm" in name:
+    #     return efficientnet_lstm(pretrained=cfg["model"]["pretrained"])
+    # elif "x3d" in name:
+    #     return x3d_model()
+    # elif "mvit_v2_s" in name:
+    #     return MViT_v2_S()
+    # elif "efficientnet_transformer" in name:
+    #     return efficientnet_transformer(pretrained=cfg["model"]["pretrained"])
+    # elif "efficientnet_v2" in name:
+    #     base_model = efficientnet_lstm(pretrained=False)
+    #     base_model, _, _ = load_checkpoint(cfg["train"]["ckpt"], base_model, None, device=torch.device("cuda"), load_opt=False)
+    #     return efficientnet_lstm_finetune(base_model)
     # elif "custom_model" in name:
     #     return CAAFNet()
     else:
