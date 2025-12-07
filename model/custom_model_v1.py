@@ -280,8 +280,12 @@ class FusionHead(nn.Module):
             encoder, num_layers=trans_layers
         )
 
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
-        nn.init.trunc_normal_(self.cls_token, std=0.02)
+        self.temp_att = nn.Sequential(
+            nn.LayerNorm(d_model),
+            nn.Linear(d_model, d_model//2),
+            nn.GELU(),
+            nn.Linear(d_model//2, 1)   # score từng frame
+        )
 
         self.norm = nn.LayerNorm(d_model)
         self.cls = nn.Sequential(
@@ -305,18 +309,17 @@ class FusionHead(nn.Module):
         for blk in self.co_blocks:
             rgb, hf = blk(rgb,hf)
 
-        rgb = self.ln_rgb(rgb)
-        hf  = self.ln_hf(hf)
-        x = rgb + hf
-
-        cls = self.cls_token.expand(B, 1, -1)  # (B,1,D)
-        x = torch.cat([cls, x], dim=1) 
+        x = self.ln_rgb(rgb) + self.ln_hf(hf)
 
         # Transformer fusion
         x = self.transformer(x)  # (B,1+T,D)
-        x = self.norm(x[:,0])               # take CLS token only
+        
+        score = self.temp_att(x)         # (B,T,1)
+        att = torch.softmax(score, dim=1) # (B,T,1)
+        x = torch.sum(att * x, dim=1)    # (B,D)
 
-        # 7) Classification
+        x = self.norm(x)
+
         return self.cls(x)
     
 class DeepFake_Final(nn.Module):
@@ -328,7 +331,7 @@ class DeepFake_Final(nn.Module):
         self.head = FusionHead(
             rgb_dim=512, hf_dim=1280, d_model=512,
             num_classes=num_classes,
-            co_layers=2, trans_layers=2,
+            co_layers=1, trans_layers=1,
             nhead=4, drop=0.1,
             max_len=T
         )
