@@ -266,8 +266,8 @@ class FusionHead(nn.Module):
             for _ in range(co_layers)
         ])
 
-        self.ln_rgb = nn.LayerNorm(d_model)
-        self.ln_hf  = nn.LayerNorm(d_model)
+        # self.ln_rgb = nn.LayerNorm(d_model)
+        # self.ln_hf  = nn.LayerNorm(d_model)
 
         # Transformer Fusion layer
         encoder = nn.TransformerEncoderLayer(
@@ -309,10 +309,10 @@ class FusionHead(nn.Module):
         for blk in self.co_blocks:
             rgb, hf = blk(rgb,hf)
 
-        x = self.ln_rgb(rgb) + self.ln_hf(hf)
+        x = rgb + hf
 
         # Transformer fusion
-        x = self.transformer(x)  # (B,1+T,D)
+        x = self.transformer(x)  # (B,T,D)
         
         score = self.temp_att(x)         # (B,T,1)
         att = torch.softmax(score, dim=1) # (B,T,1)
@@ -331,7 +331,7 @@ class DeepFake_Final(nn.Module):
         self.head = FusionHead(
             rgb_dim=512, hf_dim=1280, d_model=512,
             num_classes=num_classes,
-            co_layers=1, trans_layers=1,
+            co_layers=2, trans_layers=1,
             nhead=4, drop=0.1,
             max_len=T
         )
