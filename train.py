@@ -17,7 +17,8 @@ from sklearn.metrics import roc_auc_score, f1_score
 # from model.mvit_v2 import MViT_v2_S
 # from model.efficientnet_transformer import efficientnet_transformer
 # from model.custom_model import CAAFNet
-from model.custom_model_v1 import DeepFake_Final
+# from model.custom_model_v1 import DeepFake_Final
+from model.custom_model_v2 import DeepFake_Final_v2
 from preprocessing.dataset import FaceForensicsDataset
 from utils.logger import setup_logger
 from utils.checkpoints import save_checkpoint, load_checkpoint
@@ -35,8 +36,8 @@ def set_seed(seed=42):
 
 def build_model(cfg):
     name = cfg["model"]["name"].lower()
-    if "custom_model_v1" in name:
-        return DeepFake_Final()
+    if "custom_model_v2" in name:
+        return DeepFake_Final_v2()
     # elif "efficientnet_lstm" in name:
     #     return efficientnet_lstm(pretrained=cfg["model"]["pretrained"])
     # elif "x3d" in name:

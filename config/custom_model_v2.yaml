@@ -1,0 +1,16 @@
+model:
+  name: custom_model_v2
+
+train:
+  epochs: 100
+  warmup_epochs: 5
+  batch_size: 16
+  optimizer: adamw      
+  lr: !!float "1e-4"
+  min_lr: !!float "1e-6"
+  pos_weight: 0.5
+  weight_decay: !!float "1e-4"
+
+data:
+  root_dir: data       
+  num_workers: 4
