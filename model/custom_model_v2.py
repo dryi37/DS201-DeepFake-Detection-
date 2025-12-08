@@ -178,26 +178,44 @@ class RGB_seq(nn.Module):
 
         return feat.reshape(B,T,1280)
     
-class CoAttention(nn.Module):
-    def __init__(self, d_model, num_heads=4, drop=0.1):
-        super().__init__()
-        self.rgb_attn = nn.MultiheadAttention(d_model, num_heads, dropout=drop, batch_first=True)
-        self.hf_attn  = nn.MultiheadAttention(d_model, num_heads, dropout=drop, batch_first=True)
+# class CoAttention(nn.Module):
+#     def __init__(self, d_model, num_heads=4, drop=0.1):
+#         super().__init__()
+#         self.rgb_attn = nn.MultiheadAttention(d_model, num_heads, dropout=drop, batch_first=True)
+#         self.hf_attn  = nn.MultiheadAttention(d_model, num_heads, dropout=drop, batch_first=True)
 
-        self.hf_norm = nn.LayerNorm(d_model)
-        self.rgb_norm = nn.LayerNorm(d_model)
+#         self.hf_norm = nn.LayerNorm(d_model)
+#         self.rgb_norm = nn.LayerNorm(d_model)
+
+#     def forward(self, rgb_seq, hf_seq):
+#         rgb_norm = self.rgb_norm(rgb_seq)
+#         hf_norm  = self.hf_norm(hf_seq)
+
+#         rgb_att, _ = self.rgb_attn(query=rgb_norm, key=hf_norm, value=hf_norm)
+#         hf_att, _ = self.hf_attn(query=hf_norm, key=rgb_norm, value=rgb_norm)
+
+#         rgb_seq = rgb_seq + rgb_att
+#         hf_seq = hf_seq + hf_att
+
+#         return rgb_seq, hf_seq
+
+class ConcatFusion(nn.Module):
+    def __init__(self, d_model):
+        super().__init__()
+        self.proj = nn.Sequential(
+            nn.LayerNorm(2 * d_model),
+            nn.Linear(2 * d_model, d_model),
+            nn.ReLU(inplace=True),
+        )
 
     def forward(self, rgb_seq, hf_seq):
-        rgb_norm = self.rgb_norm(rgb_seq)
-        hf_norm  = self.hf_norm(hf_seq)
-
-        rgb_att, _ = self.rgb_attn(query=rgb_norm, key=hf_norm, value=hf_norm)
-        hf_att, _ = self.hf_attn(query=hf_norm, key=rgb_norm, value=rgb_norm)
-
-        rgb_seq = rgb_seq + rgb_att
-        hf_seq = hf_seq + hf_att
-
-        return rgb_seq, hf_seq
+        """
+        rgb_seq, hf_seq: (B, T, d_model)
+        return: fused (B, T, d_model)
+        """
+        x = torch.cat([rgb_seq, hf_seq], dim=-1)  # (B, T, 2*d_model)
+        fused = self.proj(x)                     # (B, T, d_model)
+        return fused
     
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_len=500, dropout=0.1):
@@ -230,7 +248,15 @@ class DeepFake_Final_v2(nn.Module):
         self.rgb = RGB_seq()
         self.hf = HF_seq(224)
 
-        self.co_attn = CoAttention(1280, num_heads=num_heads, drop=dropout)
+        # self.co_attn = CoAttention(1280, num_heads=num_heads, drop=dropout)
+
+        # self.cross_fusion = CrossModalFusion(
+        #     d_model=d_model,
+        #     num_heads=4,      # fusion không cần quá nhiều head
+        #     dropout=dropout
+        # )
+
+        self.fusion = ConcatFusion(d_model)
 
         self.pos_encoder = PositionalEncoding(d_model, max_len=500, dropout=dropout)
 
@@ -265,9 +291,9 @@ class DeepFake_Final_v2(nn.Module):
         hf_seq  = self.hf(video)    # (B, T, 1280)
 
         # Co-Attention giữa 2 modality
-        rgb_seq, hf_seq = self.co_attn(rgb_seq, hf_seq)  # vẫn (B, T, 1280)
+        # rgb_seq, hf_seq = self.co_attn(rgb_seq, hf_seq)  # vẫn (B, T, 1280)
 
-        fused = (rgb_seq + hf_seq) * 0.5    # (B, T, 1280)
+        fused = self.fusion(rgb_seq, hf_seq)   # (B, T, 1280)
         x = self.pos_encoder(fused)         # (B, T, 1280)
         x = self.temporal_encoder(x)        # (B, T, 1280)
         x = x.mean(dim=1)                   # (B, 1280)
