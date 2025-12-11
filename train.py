@@ -18,7 +18,8 @@ from sklearn.metrics import roc_auc_score, f1_score
 # from model.efficientnet_transformer import efficientnet_transformer
 # from model.custom_model import CAAFNet
 # from model.custom_model_v1 import DeepFake_Final
-from model.custom_model_v2 import DeepFake_Final_v2
+# from model.custom_model_v2 import DeepFake_Final_v2
+from model.custom_model_v3 import DeepfakeDetectionModel
 from preprocessing.dataset import FaceForensicsDataset
 from utils.logger import setup_logger
 from utils.checkpoints import save_checkpoint, load_checkpoint
@@ -36,8 +37,8 @@ def set_seed(seed=42):
 
 def build_model(cfg):
     name = cfg["model"]["name"].lower()
-    if "custom_model_v2" in name:
-        return DeepFake_Final_v2()
+    if "custom_model_v3" in name:
+        return DeepfakeDetectionModel()
     # elif "efficientnet_lstm" in name:
     #     return efficientnet_lstm(pretrained=cfg["model"]["pretrained"])
     # elif "x3d" in name:
@@ -112,7 +113,7 @@ def train():
         min_lr=cfg["train"]["min_lr"]
     )
 
-    # Weighted BCE
+    # Weighted CE
     weights = torch.tensor([2.0, 1.0]).to(device)
     criterion = nn.CrossEntropyLoss(weight=weights)
 
@@ -124,6 +125,9 @@ def train():
 
     num_epochs = cfg["train"]["epochs"]
 
+    best_val_auc = -1.0      
+    best_epoch = -1          
+
     for epoch in range(start_epoch, num_epochs):
         model.train()
         train_losses = []
@@ -131,11 +135,11 @@ def train():
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}", ncols=100)
         for batch in pbar:
-            videos = batch["clip"].to(device)
+            videos = batch["clip"].to(device)      # [B, C, T, H, W]
             labels = batch["label"].long().to(device)
 
             optimizer.zero_grad()
-            outputs = model(videos)
+            outputs = model(videos)                # [B, 2]
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -156,9 +160,10 @@ def train():
             train_f1 = f1_score(all_y_true, preds, average="macro")
             train_roc = roc_auc_score(all_y_true, all_y_prob)
         except ValueError:
-            train_f1 = train_roc = 0.0
+            train_f1 = 0.0
+            train_roc = 0.0
 
-        # Validation 
+        # Validation
         model.eval()
         val_losses = []
         val_true, val_prob = [], []
@@ -181,9 +186,10 @@ def train():
             val_f1 = f1_score(val_true, val_preds, average="macro")
             val_roc = roc_auc_score(val_true, val_prob)
         except ValueError:
-            val_f1 = val_roc = 0.0
+            val_f1 = 0.0
+            val_roc = 0.0
 
-        # Logging & Save
+        # Logging 
         logger.info(
             f"Epoch {epoch+1}/{num_epochs} | "
             f"train_loss={avg_train_loss:.4f} | train_f1={train_f1:.4f} | "
@@ -199,8 +205,14 @@ def train():
             f"val_auc={val_roc:.4f}"
         )
 
-        # Save checkpoint
-        save_checkpoint(model, optimizer, save_path, epoch)
+        if val_roc > best_val_auc:
+            best_val_auc = val_roc
+            best_epoch = epoch + 1
+            logger.info(f"--> New best model at epoch {best_epoch}, val_auc={best_val_auc:.4f}, saving checkpoint...")
+            # lưu duy nhất best
+            save_checkpoint(model, optimizer, save_path, epoch)
+
+    logger.info(f"Training done. Best epoch = {best_epoch}, best val_auc = {best_val_auc:.4f}")
 
 
 if __name__ == "__main__":
