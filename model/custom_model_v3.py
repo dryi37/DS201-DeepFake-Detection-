@@ -183,7 +183,7 @@ class DeepfakeDetectionModel(nn.Module):
         backbone_name: str = "efficientnet_b1",
         backbone_out_dim: int = 512,
         pretrained_backbone: bool = False,
-        fusion_layers: int = 1,
+        fusion_layers: int = 2,
         fusion_heads: int = 8,
         fusion_dropout: float = 0.1,
         temporal_hidden_size: int = 512,
