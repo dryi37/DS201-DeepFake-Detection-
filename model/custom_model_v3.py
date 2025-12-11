@@ -27,7 +27,7 @@ class LocalPatchEncoder(nn.Module):
     def __init__(
         self,
         grid_size: int = 4,
-        backbone_name: str = "efficientnet_b1",   # chỉ dùng EfficientNet
+        backbone_name: str = "efficientnet_b0",   # chỉ dùng EfficientNet
         backbone_out_dim: int = 512,
         pretrained_backbone: bool = False,
     ):
@@ -50,6 +50,9 @@ class LocalPatchEncoder(nn.Module):
         backbone.classifier[1] = nn.Linear(in_dim, backbone_out_dim)
         self.backbone = backbone
 
+        nn.init.xavier_uniform_(backbone.classifier[1].weight)
+        nn.init.zeros_(backbone.classifier[1].bias)
+
     def forward(self, x: torch.Tensor):
         patches = extract_grid_patches(x, grid_size=self.grid_size)
         B, N, C, h, w = patches.shape
@@ -64,7 +67,7 @@ class LocalPatchEncoder(nn.Module):
 class GlobalEncoder(nn.Module):
     def __init__(
         self,
-        backbone_name: str = "efficientnet_b1",
+        backbone_name: str = "efficientnet_b0",
         backbone_out_dim: int = 512,
         pretrained_backbone: bool = False,
     ):
@@ -84,6 +87,9 @@ class GlobalEncoder(nn.Module):
         in_dim = backbone.classifier[1].in_features
         backbone.classifier[1] = nn.Linear(in_dim, backbone_out_dim)
         self.backbone = backbone
+
+        nn.init.xavier_uniform_(backbone.classifier[1].weight)
+        nn.init.zeros_(backbone.classifier[1].bias)
 
     def forward(self, x: torch.Tensor):
         global_feat = self.backbone(x)
@@ -180,7 +186,7 @@ class DeepfakeDetectionModel(nn.Module):
     def __init__(
         self,
         grid_size: int = 4,
-        backbone_name: str = "efficientnet_b1",
+        backbone_name: str = "efficientnet_b0",
         backbone_out_dim: int = 512,
         pretrained_backbone: bool = False,
         fusion_layers: int = 1,
@@ -189,7 +195,6 @@ class DeepfakeDetectionModel(nn.Module):
         temporal_hidden_size: int = 256,
         temporal_layers: int = 1,
         temporal_bidirectional: bool = True,
-        temporal_dropout: float = 0.1,
     ):
         super().__init__()
 
@@ -228,7 +233,6 @@ class DeepfakeDetectionModel(nn.Module):
             hidden_size=temporal_hidden_size,
             num_layers=temporal_layers,
             bidirectional=temporal_bidirectional,
-            dropout=temporal_dropout,
         )
 
         # Classifier head (BCEWithLogitsLoss dùng logits, không sigmoid ở đây)
@@ -238,6 +242,35 @@ class DeepfakeDetectionModel(nn.Module):
             nn.Dropout(0.2),
             nn.Linear(256, 2),
         )
+
+        self._init_weights()
+
+    def _init_weights(self):
+        for m in self.modules():
+            # Linear layers
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+
+            # LayerNorm -> giữ nguyên (không init)
+            
+            # LSTM
+            if isinstance(m, nn.LSTM):
+                for name, param in m.named_parameters():
+
+                    if "weight_ih" in name:     # input-hidden weights
+                        nn.init.xavier_uniform_(param.data)
+
+                    elif "weight_hh" in name:   # hidden-hidden weights
+                        nn.init.orthogonal_(param.data)
+
+                    elif "bias" in name:
+                        nn.init.zeros_(param.data)
+                        # forget gate bias = +1
+                        n = param.size(0)
+                        param.data[n//4:n//2].fill_(1.0)
+
 
     def forward(self, x: torch.Tensor):
         B, C, T, H, W = x.shape
