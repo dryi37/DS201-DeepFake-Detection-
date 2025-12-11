@@ -27,8 +27,8 @@ class LocalPatchEncoder(nn.Module):
     def __init__(
         self,
         grid_size: int = 4,
-        backbone_name: str = "efficientnet_b1",   # chỉ dùng EfficientNet
-        backbone_out_dim: int = 512,
+        backbone_name: str = "efficientnet_b0",   # chỉ dùng EfficientNet
+        backbone_out_dim: int = 256,
         pretrained_backbone: bool = False,
     ):
         super().__init__()
@@ -67,8 +67,8 @@ class LocalPatchEncoder(nn.Module):
 class GlobalEncoder(nn.Module):
     def __init__(
         self,
-        backbone_name: str = "efficientnet_b1",
-        backbone_out_dim: int = 512,
+        backbone_name: str = "efficientnet_b0",
+        backbone_out_dim: int = 256,
         pretrained_backbone: bool = False,
     ):
         super().__init__()
@@ -100,8 +100,8 @@ class LocalGlobalFusionTransformer(nn.Module):
     def __init__(
         self,
         d_model: int = 512,
-        num_layers: int = 2,
-        num_heads: int = 8,
+        num_layers: int = 1,
+        num_heads: int = 4,
         dropout: float = 0.2,
         max_patches: int = 16,   # grid_size=4 -> 16 patch
     ):
@@ -186,11 +186,11 @@ class DeepfakeDetectionModel(nn.Module):
     def __init__(
         self,
         grid_size: int = 4,
-        backbone_name: str = "efficientnet_b1",
-        backbone_out_dim: int = 512,
+        backbone_name: str = "efficientnet_b0",
+        backbone_out_dim: int = 256,
         pretrained_backbone: bool = False,
         fusion_layers: int = 1,
-        fusion_heads: int = 8,
+        fusion_heads: int = 4,
         fusion_dropout: float = 0.2,
         temporal_hidden_size: int = 256,
         temporal_layers: int = 1,
