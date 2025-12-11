@@ -80,6 +80,10 @@ def train():
     # Build Model
     model = build_model(cfg).to(device)
 
+    if torch.cuda.device_count() > 1:
+        print(f"Use {torch.cuda.device_count()} GPUs with DataParallel")
+        model = nn.DataParallel(model)
+
     # Dataset & Dataloader
     train_ds = FaceForensicsDataset(cfg["data"]["root_dir"], phase="train")
     val_ds = FaceForensicsDataset(cfg["data"]["root_dir"], phase="val")
