@@ -183,10 +183,10 @@ class DeepfakeDetectionModel(nn.Module):
         backbone_name: str = "efficientnet_b1",
         backbone_out_dim: int = 512,
         pretrained_backbone: bool = False,
-        fusion_layers: int = 2,
+        fusion_layers: int = 1,
         fusion_heads: int = 8,
         fusion_dropout: float = 0.1,
-        temporal_hidden_size: int = 512,
+        temporal_hidden_size: int = 256,
         temporal_layers: int = 1,
         temporal_bidirectional: bool = True,
         temporal_dropout: float = 0.1,
@@ -204,6 +204,15 @@ class DeepfakeDetectionModel(nn.Module):
             backbone_name=backbone_name,
             backbone_out_dim=backbone_out_dim,
             pretrained_backbone=pretrained_backbone,
+        )
+
+        self.local_proj = nn.Sequential(
+            nn.Linear(backbone_out_dim, backbone_out_dim),
+            nn.LayerNorm(backbone_out_dim),
+        )
+        self.global_proj = nn.Sequential(
+            nn.Linear(backbone_out_dim, backbone_out_dim),
+            nn.LayerNorm(backbone_out_dim),
         )
 
         self.fusion = LocalGlobalFusionTransformer(
@@ -239,6 +248,9 @@ class DeepfakeDetectionModel(nn.Module):
         # local + global
         patch_feats = self.local_encoder(x_flat)            # [B*T, N, D]
         global_feats = self.global_encoder(x_flat)          # [B*T, D]
+
+        patch_feats = self.local_proj(patch_feats)          # [B*T, N, D]
+        global_feats = self.global_proj(global_feats)       # [B*T, D]
 
         # fusion
         fused_flat = self.fusion(global_feats, patch_feats) # [B*T, D]
