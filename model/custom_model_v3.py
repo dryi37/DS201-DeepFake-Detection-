@@ -212,11 +212,11 @@ class DeepfakeDetectionModel(nn.Module):
         )
 
         self.local_proj = nn.Sequential(
-            nn.Linear(backbone_out_dim, backbone_out_dim),
+            # nn.Linear(backbone_out_dim, backbone_out_dim),
             nn.LayerNorm(backbone_out_dim),
         )
         self.global_proj = nn.Sequential(
-            nn.Linear(backbone_out_dim, backbone_out_dim),
+            # nn.Linear(backbone_out_dim, backbone_out_dim),
             nn.LayerNorm(backbone_out_dim),
         )
 
