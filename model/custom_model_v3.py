@@ -179,9 +179,9 @@ class TemporalBiLSTM(nn.Module):
 class DeepfakeDetectionModel(nn.Module):
     def __init__(
         self,
-        grid_size: int = 4,
+        grid_size: int = 2,
         backbone_name: str = "efficientnet_b0",
-        backbone_out_dim: int = 512,
+        backbone_out_dim: int = 256,
         pretrained_backbone: bool = False,
         fusion_heads: int = 4,
         fusion_dropout: float = 0.2,
