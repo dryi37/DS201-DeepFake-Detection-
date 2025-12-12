@@ -100,51 +100,45 @@ class LocalGlobalFusionTransformer(nn.Module):
     def __init__(
         self,
         d_model: int = 512,
-        num_layers: int = 1,
         num_heads: int = 4,
         dropout: float = 0.2,
-        max_patches: int = 16,   # grid_size=4 -> 16 patch
+        max_patches: int = 16,
     ):
         super().__init__()
         self.d_model = d_model
         self.max_patches = max_patches
 
-        # 1 global token + max_patches local token
-        max_tokens = 1 + max_patches
-        self.pos_embed = nn.Parameter(torch.zeros(1, max_tokens, d_model))
-
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=num_heads,
-            dim_feedforward=d_model * 4,
+        # MultiheadAttention expects [B, T, D] when batch_first=True
+        self.attn = nn.MultiheadAttention(
+            embed_dim=d_model,
+            num_heads=num_heads,
             dropout=dropout,
-            batch_first=True,   # [B, T, D]
+            batch_first=True,
         )
-        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
-        self._init_weights()
-
-    def _init_weights(self):
-        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+        # Optional norm for stability (recommended)
+        self.norm = nn.LayerNorm(d_model) 
+        self.drop = nn.Dropout(dropout)
 
     def forward(self, global_feat: torch.Tensor, patch_feats: torch.Tensor):
         B, D = global_feat.shape
         B2, N, D2 = patch_feats.shape
         assert B == B2 and D == D2, "global_feat và patch_feats phải cùng batch & dim"
-        assert N <= self.max_patches, f"Số patch ({N}) > max_patches ({self.max_patches})"
+        assert N <= self.max_patches, f"N ({N}) > max_patches ({self.max_patches})"
 
-        # ghép global token + local tokens
-        global_tok = global_feat.unsqueeze(1)          # [B, 1, D]
-        tokens = torch.cat([global_tok, patch_feats], dim=1)  # [B, 1+N, D]
+        # Build tokens
+        g = global_feat.unsqueeze(1)                # [B, 1, D]
+        kv = torch.cat([g, patch_feats], dim=1)     # [B, 1+N, D]
 
-        T = tokens.size(1)
-        pos = self.pos_embed[:, :T, :]                 # [1, T, D]
-        tokens = tokens + pos
+        # Cross-attention: Q is only global (1 token), K/V are all tokens
+        attn_out, _ = self.attn(query=g, key=kv, value=kv, need_weights=False)  # [B, 1, D]
+        attn_out = self.drop(attn_out)
 
-        fused_tokens = self.encoder(tokens)            # [B, T, D]
-        fused_frame_feat = fused_tokens[:, 0, :]       # dùng global token sau fusion
+        out = g + attn_out
 
-        return fused_frame_feat
+        out = self.norm(out)                        # [B, 1, D]
+        fused_global = out.squeeze(1)               # [B, D]
+        return fused_global
 
 
 class TemporalBiLSTM(nn.Module):
@@ -189,7 +183,6 @@ class DeepfakeDetectionModel(nn.Module):
         backbone_name: str = "efficientnet_b0",
         backbone_out_dim: int = 512,
         pretrained_backbone: bool = False,
-        fusion_layers: int = 1,
         fusion_heads: int = 4,
         fusion_dropout: float = 0.2,
         temporal_hidden_size: int = 256,
@@ -222,7 +215,6 @@ class DeepfakeDetectionModel(nn.Module):
 
         self.fusion = LocalGlobalFusionTransformer(
             d_model=backbone_out_dim,
-            num_layers=fusion_layers,
             num_heads=fusion_heads,
             dropout=fusion_dropout,
             max_patches=grid_size * grid_size,
