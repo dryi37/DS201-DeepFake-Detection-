@@ -1,0 +1,293 @@
+import torch
+import torch.nn as nn
+from torchvision import models
+
+
+def extract_grid_patches(x: torch.Tensor, grid_size: int = 4):
+    B, C, H, W = x.shape
+    assert H % grid_size == 0 and W % grid_size == 0, \
+        f"H,W ({H},{W}) phải chia hết cho grid_size={grid_size}"
+
+    patch_h = H // grid_size
+    patch_w = W // grid_size
+
+    # unfold: [B, C, grid_h, patch_h, grid_w, patch_w]
+    patches = x.unfold(2, patch_h, patch_h).unfold(3, patch_w, patch_w)
+
+    # [B, grid_h, grid_w, C, h, w]
+    patches = patches.permute(0, 2, 3, 1, 4, 5).contiguous()
+    B, gh, gw, C, h, w = patches.shape
+
+    # [B, N, C, h, w]
+    patches = patches.view(B, gh * gw, C, h, w)
+    return patches
+
+
+class LocalPatchEncoder(nn.Module):
+    def __init__(
+        self,
+        grid_size: int = 4,
+        backbone_name: str = "efficientnet_b0",   # chỉ dùng EfficientNet
+        backbone_out_dim: int = 512,
+        pretrained_backbone: bool = False,
+    ):
+        super().__init__()
+        self.grid_size = grid_size
+        self.num_patches = grid_size * grid_size
+        self.backbone_out_dim = backbone_out_dim
+        self.backbone_name = backbone_name
+
+        if backbone_name == "efficientnet_b0":
+            backbone = models.efficientnet_b0(pretrained=pretrained_backbone)
+        elif backbone_name == "efficientnet_b1":
+            backbone = models.efficientnet_b1(pretrained=pretrained_backbone)
+        elif backbone_name == "efficientnet_b2":
+            backbone = models.efficientnet_b2(pretrained=pretrained_backbone)
+        else:
+            raise ValueError(f"Unsupported EfficientNet backbone: {backbone_name}")
+
+        in_dim = backbone.classifier[1].in_features
+        backbone.classifier[1] = nn.Linear(in_dim, backbone_out_dim)
+        self.backbone = backbone
+
+        nn.init.xavier_uniform_(backbone.classifier[1].weight)
+        nn.init.zeros_(backbone.classifier[1].bias)
+
+    def forward(self, x: torch.Tensor):
+        patches = extract_grid_patches(x, grid_size=self.grid_size)
+        B, N, C, h, w = patches.shape
+
+        patches = patches.view(B * N, C, h, w)        # [B*N, C, h, w]
+        patch_feats = self.backbone(patches)          # [B*N, D]
+        patch_feats = patch_feats.view(B, N, -1)      # [B, N, D]
+
+        return patch_feats
+
+
+class GlobalEncoder(nn.Module):
+    def __init__(
+        self,
+        backbone_name: str = "efficientnet_b0",
+        backbone_out_dim: int = 512,
+        pretrained_backbone: bool = False,
+    ):
+        super().__init__()
+        self.backbone_name = backbone_name
+        self.backbone_out_dim = backbone_out_dim
+
+        if backbone_name == "efficientnet_b0":
+            backbone = models.efficientnet_b0(pretrained=pretrained_backbone)
+        elif backbone_name == "efficientnet_b1":
+            backbone = models.efficientnet_b1(pretrained=pretrained_backbone)
+        elif backbone_name == "efficientnet_b2":
+            backbone = models.efficientnet_b2(pretrained=pretrained_backbone)
+        else:
+            raise ValueError(f"Unsupported EfficientNet backbone: {backbone_name}")
+
+        in_dim = backbone.classifier[1].in_features
+        backbone.classifier[1] = nn.Linear(in_dim, backbone_out_dim)
+        self.backbone = backbone
+
+        nn.init.xavier_uniform_(backbone.classifier[1].weight)
+        nn.init.zeros_(backbone.classifier[1].bias)
+
+    def forward(self, x: torch.Tensor):
+        global_feat = self.backbone(x)
+        return global_feat
+
+
+class LocalGlobalFusionTransformer(nn.Module):
+    def __init__(
+        self,
+        d_model: int = 512,
+        num_heads: int = 4,
+        dropout: float = 0.2,
+        max_patches: int = 16,
+    ):
+        super().__init__()
+        self.d_model = d_model
+        self.max_patches = max_patches
+
+        # MultiheadAttention expects [B, T, D] when batch_first=True
+        self.attn = nn.MultiheadAttention(
+            embed_dim=d_model,
+            num_heads=num_heads,
+            dropout=dropout,
+            batch_first=True,
+        )
+
+        # Optional norm for stability (recommended)
+        self.norm = nn.LayerNorm(d_model) 
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, global_feat: torch.Tensor, patch_feats: torch.Tensor):
+        B, D = global_feat.shape
+        B2, N, D2 = patch_feats.shape
+        assert B == B2 and D == D2, "global_feat và patch_feats phải cùng batch & dim"
+        assert N <= self.max_patches, f"N ({N}) > max_patches ({self.max_patches})"
+
+        # Build tokens
+        g = global_feat.unsqueeze(1)                # [B, 1, D]
+        kv = torch.cat([g, patch_feats], dim=1)     # [B, 1+N, D]
+
+        # Cross-attention: Q is only global (1 token), K/V are all tokens
+        attn_out, _ = self.attn(query=g, key=kv, value=kv, need_weights=False)  # [B, 1, D]
+        attn_out = self.drop(attn_out)
+
+        out = g + attn_out
+
+        out = self.norm(out)                        # [B, 1, D]
+        fused_global = out.squeeze(1)               # [B, D]
+        return fused_global
+
+
+class TemporalBiGRU(nn.Module):
+    def __init__(
+        self,
+        input_dim: int,        # D
+        hidden_size: int = 512,
+        num_layers: int = 1,
+        bidirectional: bool = True,
+        dropout: float = 0.1,
+    ):
+        super().__init__()
+
+        self.input_dim = input_dim
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.bidirectional = bidirectional
+
+        self.lstm = nn.GRU(
+            input_size=input_dim,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True,        # [B, T, D]
+            dropout=dropout if num_layers > 1 else 0.0,
+            bidirectional=bidirectional,
+        )
+
+        lstm_out_dim = hidden_size * (2 if bidirectional else 1)
+        self.lstm_out_dim = lstm_out_dim
+        self.out_dim = lstm_out_dim
+
+    def forward(self, frame_feats: torch.Tensor):
+        out, (h_n, c_n) = self.lstm(frame_feats)
+        # mean pooling theo thời gian
+        video_feat = out.mean(dim=1)  # [B, lstm_out_dim]
+        return video_feat
+    
+class DeepfakeDetectionModel(nn.Module):
+    def __init__(
+        self,
+        grid_size: int = 2,
+        backbone_name: str = "efficientnet_b0",
+        backbone_out_dim: int = 256,
+        pretrained_backbone: bool = False,
+        fusion_heads: int = 4,
+        fusion_dropout: float = 0.2,
+        temporal_hidden_size: int = 256,
+        temporal_layers: int = 1,
+        temporal_bidirectional: bool = True,
+    ):
+        super().__init__()
+
+        self.local_encoder = LocalPatchEncoder(
+            grid_size=grid_size,
+            backbone_name=backbone_name,
+            backbone_out_dim=backbone_out_dim,
+            pretrained_backbone=pretrained_backbone,
+        )
+
+        self.global_encoder = GlobalEncoder(
+            backbone_name=backbone_name,
+            backbone_out_dim=backbone_out_dim,
+            pretrained_backbone=pretrained_backbone,
+        )
+
+        self.local_proj = nn.Sequential(
+            # nn.Linear(backbone_out_dim, backbone_out_dim),
+            nn.LayerNorm(backbone_out_dim),
+        )
+        self.global_proj = nn.Sequential(
+            # nn.Linear(backbone_out_dim, backbone_out_dim),
+            nn.LayerNorm(backbone_out_dim),
+        )
+
+        self.fusion = LocalGlobalFusionTransformer(
+            d_model=backbone_out_dim,
+            num_heads=fusion_heads,
+            dropout=fusion_dropout,
+            max_patches=grid_size * grid_size,
+        )
+
+        self.temporal = TemporalBiGRU(
+            input_dim=backbone_out_dim,
+            hidden_size=temporal_hidden_size,
+            num_layers=temporal_layers,
+            bidirectional=temporal_bidirectional,
+        )
+
+        # Classifier head (BCEWithLogitsLoss dùng logits, không sigmoid ở đây)
+        self.classifier = nn.Sequential(
+            nn.Linear(self.temporal.out_dim, 256),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.2),
+            nn.Linear(256, 2),
+        )
+
+        self._init_weights()
+
+    def _init_weights(self):
+        for m in self.modules():
+            # Linear layers
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+
+            # LayerNorm -> giữ nguyên (không init)
+            
+            # LSTM
+            if isinstance(m, nn.LSTM):
+                for name, param in m.named_parameters():
+
+                    if "weight_ih" in name:     # input-hidden weights
+                        nn.init.xavier_uniform_(param.data)
+
+                    elif "weight_hh" in name:   # hidden-hidden weights
+                        nn.init.orthogonal_(param.data)
+
+                    elif "bias" in name:
+                        nn.init.zeros_(param.data)
+                        # forget gate bias = +1
+                        n = param.size(0)
+                        param.data[n//4:n//2].fill_(1.0)
+
+
+    def forward(self, x: torch.Tensor):
+        B, C, T, H, W = x.shape
+
+        x_btchw = x.permute(0, 2, 1, 3, 4).contiguous()     # [B, T, C, H, W]
+        x_flat = x_btchw.view(B * T, C, H, W)               # [B*T, C, H, W]
+
+        # local + global
+        patch_feats = self.local_encoder(x_flat)            # [B*T, N, D]
+        global_feats = self.global_encoder(x_flat)          # [B*T, D]
+
+        patch_feats = self.local_proj(patch_feats)          # [B*T, N, D]
+        global_feats = self.global_proj(global_feats)       # [B*T, D]
+
+        # fusion
+        fused_flat = self.fusion(global_feats, patch_feats) # [B*T, D]
+
+        # reshape lại thành sequence theo thời gian
+        D = fused_flat.size(-1)
+        frame_feats = fused_flat.view(B, T, D)              # [B, T, D]
+
+        # temporal
+        video_feat = self.temporal(frame_feats)             # [B, D_video]
+
+        # logits
+        logits = self.classifier(video_feat)    # [B, 2]
+
+        return logits
